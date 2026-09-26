@@ -16,7 +16,9 @@ import {
   mergeForbiddenRanges,
   countPointsInRange,
   positionsAvoidingRanges,
+  locateNthUsablePosition,
 } from '../lib/crt.js';
+import { locateBody } from '../lib/solver.js';
 
 let passed = 0;
 function test(name, fn) {
@@ -316,6 +318,115 @@ test('避让：首次对花位置超过布长时统计为 0', () => {
   assert.equal(out.excluded, 0n);
   assert.equal(out.total, 0n);
   assert.deepEqual(out.positions, []);
+});
+
+/* ---------------- 按序号定位可用对花点 ---------------- */
+
+test('定位：无禁印区间时第 n 个点即原序列第 n−1 项', () => {
+  // 序列 10,34,58,82（first=10, period=24, 布长 100）
+  const at = (n) => locateNthUsablePosition(10n, 24n, 100n, [], n);
+  assert.deepEqual(at(1n), { found: true, total: 4n, position: 10n, k: 0n, remaining: 90n });
+  assert.deepEqual(at(4n), { found: true, total: 4n, position: 82n, k: 3n, remaining: 18n });
+  // 越界：found=false 且给出可用点总数
+  assert.deepEqual(at(5n), { found: false, total: 4n });
+  // 布长端点恰好是对花点时距布尾余量为 0
+  assert.deepEqual(
+    locateNthUsablePosition(0n, 100n, 200n, [], 3n),
+    { found: true, total: 3n, position: 200n, k: 2n, remaining: 0n }
+  );
+});
+
+test('定位：扣除区间端点上的点后按可用顺序编号', () => {
+  // [10,34] 端点 10、34 均不可用；可用点为 58、82
+  const at = (n) => locateNthUsablePosition(10n, 24n, 100n, [rr(10, 34)], n);
+  assert.deepEqual(at(1n), { found: true, total: 2n, position: 58n, k: 2n, remaining: 42n });
+  assert.deepEqual(at(2n), { found: true, total: 2n, position: 82n, k: 3n, remaining: 18n });
+  assert.deepEqual(at(3n), { found: false, total: 2n });
+});
+
+test('定位：相邻区间先合并，可用点为 0 时任何序号均无解', () => {
+  // [58,60] 与 [61,90] 合并为 [58,90]，连同 [10,34] 覆盖全部 4 个点
+  const out = locateNthUsablePosition(
+    10n, 24n, 100n,
+    [rr(58, 60), rr(61, 90), rr(10, 34)],
+    1n
+  );
+  assert.deepEqual(out, { found: false, total: 0n });
+  // 首次对花位置超过布长时同样为 0
+  assert.deepEqual(locateNthUsablePosition(200n, 24n, 100n, [], 1n), { found: false, total: 0n });
+});
+
+test('定位：跨多个禁印区间按可用前缀计数跳转', () => {
+  // first=0, period=1，0..99 共 100 点；禁掉偶数位置后可用点为奇数 1,3,…,99
+  const ranges = [];
+  for (let x = 0; x <= 98; x += 2) ranges.push(rr(x, x));
+  const at = (n) => locateNthUsablePosition(0n, 1n, 99n, ranges, n);
+  assert.deepEqual(at(1n), { found: true, total: 50n, position: 1n, k: 1n, remaining: 98n });
+  assert.deepEqual(at(25n), { found: true, total: 50n, position: 49n, k: 49n, remaining: 50n });
+  assert.deepEqual(at(50n), { found: true, total: 50n, position: 99n, k: 99n, remaining: 0n });
+  assert.deepEqual(at(51n), { found: false, total: 50n });
+});
+
+test('定位：超大布长与超大序号按边界定位，不逐一枚举', () => {
+  // first=0, period=10^30，布长 10^120−1，对花点共 10^90 个；禁掉前 3 个
+  const period = 10n ** 30n;
+  const cloth = 10n ** 120n - 1n;
+  const total = 10n ** 90n - 3n;
+  const at = (n) => locateNthUsablePosition(0n, period, cloth, [rr(0n, 2n * period)], n);
+  // 第 1 个可用点 = 3·10^30
+  assert.deepEqual(at(1n), {
+    found: true, total, position: 3n * period, k: 3n,
+    remaining: cloth - 3n * period,
+  });
+  // 最后一个可用点 = (10^90 − 1)·10^30，距布尾余量 10^30 − 1
+  assert.deepEqual(at(total), {
+    found: true, total, position: cloth - (period - 1n), k: 10n ** 90n - 1n,
+    remaining: period - 1n,
+  });
+  assert.deepEqual(at(total + 1n), { found: false, total });
+});
+
+test('定位接口 locateBody：复用求解与禁印规则，输入校验与越界提示', () => {
+  const base = {
+    clothLength: '100',
+    rollers: [
+      { perimeter: '8', offset: '2' },
+      { perimeter: '24', offset: '10' },
+    ],
+    forbiddenRanges: [{ start: '10', end: '34' }],
+  };
+  // 命中：可用点为 58、82
+  const hit = locateBody({ ...base, index: '1' });
+  assert.equal(hit.ok, true);
+  assert.deepEqual(hit.result, {
+    solvable: true, found: true, index: '1', total: '2',
+    position: '58', k: '2', remaining: '42',
+  });
+  // 前导零规范化
+  assert.equal(locateBody({ ...base, index: '002' }).result.position, '82');
+  // 越界：found=false，附可用点总数与有效范围提示
+  const oob = locateBody({ ...base, index: '3' });
+  assert.equal(oob.result.found, false);
+  assert.equal(oob.result.total, '2');
+  assert.match(oob.result.message, /超出范围/);
+  // 序号非法：0、非数字、缺字段均为 400
+  assert.equal(locateBody({ ...base, index: '0' }).status, 400);
+  assert.equal(locateBody({ ...base, index: 'abc' }).status, 400);
+  assert.equal(locateBody(base).status, 400);
+  // 方案字段非法同样 400
+  assert.equal(locateBody({ ...base, index: '1', clothLength: '-5' }).status, 400);
+  // 无解方案：返回冲突证据，不定位
+  const nope = locateBody({
+    clothLength: '1000', index: '1',
+    rollers: [{ perimeter: '6', offset: '0' }, { perimeter: '4', offset: '3' }],
+  });
+  assert.equal(nope.result.solvable, false);
+  assert.equal(nope.result.conflict.rollerA, 1);
+  // 可用点为 0：明确提示无法定位
+  const zero = locateBody({ ...base, index: '1', forbiddenRanges: [{ start: '0', end: '100' }] });
+  assert.equal(zero.result.found, false);
+  assert.equal(zero.result.total, '0');
+  assert.match(zero.result.message, /可用对花点数为 0/);
 });
 
 console.log(`\n全部 ${passed} 项测试通过 ✔\n`);

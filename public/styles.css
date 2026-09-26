@@ -186,6 +186,12 @@ code { background: #eef2f6; padding: 0.05rem 0.35rem; border-radius: 3px; font-s
 .positions-table td { font-family: Consolas, Menlo, monospace; font-size: 0.86rem; }
 .positions-table tr td:first-child { text-align: center; font-family: inherit; }
 
+.locate-row { display: flex; gap: 0.6rem; align-items: center; margin-top: 0.4rem; }
+.locate-row input { max-width: 18rem; }
+.locate-result { margin-top: 0.7rem; }
+.locate-result .kv-table { margin-top: 0; }
+.locate-result .banner { margin-bottom: 0; }
+
 .suggestions-table { margin-top: 0.5rem; }
 .suggestions-table th, .suggestions-table td {
   border: 1px solid var(--border);
