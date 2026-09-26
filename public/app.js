@@ -45,6 +45,12 @@ const els = {
   formulaPeriod: document.getElementById('res-formula-period'),
   positionsBody: document.getElementById('positions-body'),
   positionsNote: document.getElementById('positions-note'),
+  locateIndex: document.getElementById('locate-index'),
+  btnLocate: document.getElementById('btn-locate'),
+  locateMax: document.getElementById('locate-max'),
+  locateEmptyNote: document.getElementById('locate-empty-note'),
+  locateResult: document.getElementById('locate-result'),
+  locateError: document.getElementById('locate-error'),
 };
 
 const state = {
@@ -284,6 +290,65 @@ function hideResults() {
   els.resultEmpty.hidden = false;
   els.resultOk.hidden = true;
   els.resultConflict.hidden = true;
+  clearLocate();
+}
+
+/* ---------------- 按序号定位可用对花点 ---------------- */
+
+/** 清空定位结果与提示（保留序号输入框内容）。 */
+function clearLocate() {
+  els.locateResult.hidden = true;
+  els.locateResult.textContent = '';
+  els.locateError.hidden = true;
+  els.locateError.textContent = '';
+}
+
+function showLocateError(message) {
+  els.locateResult.hidden = true;
+  els.locateResult.textContent = '';
+  els.locateError.hidden = !message;
+  els.locateError.textContent = message || '';
+}
+
+/** 根据最近一次试算结果启用/禁用定位查询（可用点为零时禁用）。 */
+function updateLocateControls() {
+  const total = state.lastResult && state.lastResult.solvable
+    ? BigInt(state.lastResult.withinCloth.total)
+    : 0n;
+  els.locateMax.textContent = groupThousands(total.toString());
+  els.locateIndex.disabled = total === 0n;
+  els.btnLocate.disabled = total === 0n;
+  els.locateEmptyNote.hidden = total > 0n;
+  clearLocate();
+}
+
+async function locate() {
+  const data = readForm();
+  const clientError = prevalidate(data);
+  if (clientError) {
+    showError(clientError);
+    return;
+  }
+  const index = els.locateIndex.value.trim();
+  if (!DECIMAL_INTEGER.test(index) || BigInt(index) < 1n) {
+    showLocateError('序号必须是从 1 开始的十进制整数');
+    return;
+  }
+  try {
+    const result = await api('POST', '/api/solve/locate', { ...data, index });
+    showError(null);
+    els.locateError.hidden = true;
+    els.locateError.textContent = '';
+    els.locateResult.hidden = false;
+    els.locateResult.innerHTML =
+      `第 <b>${groupThousands(result.index)}</b> 个可用对花点：` +
+      `距布头 <span class="big-num">${groupThousands(result.position)}</span> 毫米` +
+      `（原对花序列 k = ${groupThousands(result.sequenceIndex)}），` +
+      `距布尾余量 <span class="big-num">${groupThousands(result.remaining)}</span> 毫米。`;
+  } catch (err) {
+    // 无解 / 无可用点 / 序号越界等由服务端给出明确提示
+    showLocateError(err.message);
+  }
 }
 
 function renderResult(result, formData) {
@@ -360,6 +425,9 @@ function renderResult(result, formData) {
     els.positionsNote.textContent =
       `避让后共 ${groupThousands(total.toString())} 个可用对花点，已全部列出（位置区间 0 ≤ x ≤ 布长）。`;
   }
+
+  // 按序号定位：可用点为零时禁用查询；每次重算后清空旧的定位结果。
+  updateLocateControls();
 }
 
 /* ---------------- 无解修正建议 ---------------- */
@@ -551,6 +619,13 @@ els.btnSolve.addEventListener('click', solve);
 els.btnSave.addEventListener('click', () => saveScheme('update'));
 els.btnSaveAs.addEventListener('click', () => saveScheme('create'));
 els.btnDelete.addEventListener('click', deleteCurrent);
+els.btnLocate.addEventListener('click', locate);
+els.locateIndex.addEventListener('keydown', (e) => {
+  if (e.key === 'Enter') {
+    e.preventDefault();
+    locate();
+  }
+});
 
 (async function init() {
   resetForm();

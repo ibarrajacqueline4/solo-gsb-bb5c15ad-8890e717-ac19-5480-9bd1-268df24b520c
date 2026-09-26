@@ -16,6 +16,7 @@ import {
   mergeForbiddenRanges,
   countPointsInRange,
   positionsAvoidingRanges,
+  locateAvailablePosition,
 } from '../lib/crt.js';
 
 let passed = 0;
@@ -316,6 +317,109 @@ test('避让：首次对花位置超过布长时统计为 0', () => {
   assert.equal(out.excluded, 0n);
   assert.equal(out.total, 0n);
   assert.deepEqual(out.positions, []);
+});
+
+/* ---------------- 按序号定位可用对花点 ---------------- */
+
+test('定位：无禁印区间时按序号取原序列点', () => {
+  // 序列 10,34,58,82（布长 100）
+  const out = locateAvailablePosition(10n, 24n, 100n, [], 3n);
+  assert.equal(out.found, true);
+  assert.equal(out.position, 58n);
+  assert.equal(out.sequenceIndex, 2n);
+  assert.equal(out.remaining, 42n); // 100 − 58
+  assert.equal(out.total, 4n);
+  // 末个点
+  const last = locateAvailablePosition(10n, 24n, 100n, [], 4n);
+  assert.equal(last.position, 82n);
+  assert.equal(last.remaining, 18n);
+});
+
+test('定位：扣除区间端点后的序号重排', () => {
+  // [10,34] 端点 10、34 均不可用，可用点为 58、82
+  const out1 = locateAvailablePosition(10n, 24n, 100n, [rr(10, 34)], 1n);
+  assert.equal(out1.found, true);
+  assert.equal(out1.position, 58n);
+  assert.equal(out1.sequenceIndex, 2n);
+  const out2 = locateAvailablePosition(10n, 24n, 100n, [rr(10, 34)], 2n);
+  assert.equal(out2.position, 82n);
+  // 序号越界：明确越界并附带可用点总数
+  const out3 = locateAvailablePosition(10n, 24n, 100n, [rr(10, 34)], 3n);
+  assert.equal(out3.found, false);
+  assert.equal(out3.reason, 'outOfRange');
+  assert.equal(out3.total, 2n);
+});
+
+test('定位：相邻区间先合并，跨合并区间定位', () => {
+  // [58,60] 与 [61,90] 合并为 [58,90]，可用点为 10、34
+  const out = locateAvailablePosition(10n, 24n, 100n, [rr(58, 60), rr(61, 90)], 2n);
+  assert.equal(out.found, true);
+  assert.equal(out.position, 34n);
+  assert.equal(out.sequenceIndex, 1n);
+  assert.equal(out.remaining, 66n);
+});
+
+test('定位：序号跨越多个禁印区间', () => {
+  // first=0, period=10, cloth=95：0,10,…,90 共 10 点
+  // 禁 [10,20]（扣 10、20）、[50,55]（扣 50）→ 可用 0,30,40,60,70,80,90
+  const ranges = [rr(10, 20), rr(50, 55)];
+  const expect = [0n, 30n, 40n, 60n, 70n, 80n, 90n];
+  for (let i = 0; i < expect.length; i++) {
+    const out = locateAvailablePosition(0n, 10n, 95n, ranges, BigInt(i + 1));
+    assert.equal(out.found, true);
+    assert.equal(out.position, expect[i]);
+    assert.equal(out.remaining, 95n - expect[i]);
+  }
+  assert.equal(locateAvailablePosition(0n, 10n, 95n, ranges, 8n).found, false);
+});
+
+test('定位：与最早 20 个可用位置列表逐一一致', () => {
+  const ranges = [rr(58, 60), rr(61, 90), rr(10, 34)];
+  const listed = positionsAvoidingRanges(10n, 24n, 1000n, ranges, 20);
+  assert.equal(listed.positions.length, 20);
+  for (let i = 0; i < listed.positions.length; i++) {
+    const out = locateAvailablePosition(10n, 24n, 1000n, ranges, BigInt(i + 1));
+    assert.equal(out.found, true);
+    assert.equal(out.position, listed.positions[i]);
+  }
+});
+
+test('定位：可用点为零时返回 empty', () => {
+  const out = locateAvailablePosition(0n, 10n, 250n, [rr(0, 250)], 1n);
+  assert.equal(out.found, false);
+  assert.equal(out.reason, 'empty');
+  assert.equal(out.total, 0n);
+  // 首次对花位置已超过布长时同样为零
+  const out2 = locateAvailablePosition(200n, 24n, 100n, [], 1n);
+  assert.equal(out2.found, false);
+  assert.equal(out2.reason, 'empty');
+});
+
+test('定位：序号 0 与负数视为越界', () => {
+  assert.equal(locateAvailablePosition(10n, 24n, 100n, [], 0n).reason, 'outOfRange');
+  assert.equal(locateAvailablePosition(10n, 24n, 100n, [], -5n).reason, 'outOfRange');
+});
+
+test('定位：超大布长下按可用前缀计数边界定位，不逐一枚举', () => {
+  // first=0, period=10^30，布长 10^120−1，点数约 10^90（无法枚举）
+  const period = 10n ** 30n;
+  const cloth = 10n ** 120n - 1n;
+  // 禁掉前三个周期点 0、10^30、2·10^30
+  const ranges = [rr(0n, 2n * period)];
+  const total = cloth / period + 1n - 3n;
+  // 第 1 个可用点 = 3·10^30
+  const first = locateAvailablePosition(0n, period, cloth, ranges, 1n);
+  assert.equal(first.found, true);
+  assert.equal(first.position, 3n * period);
+  assert.equal(first.sequenceIndex, 3n);
+  assert.equal(first.remaining, cloth - 3n * period);
+  // 最后一个可用点（序号 = total）：(10^90 − 1)·10^30，距布尾余量 10^30 − 1
+  const last = locateAvailablePosition(0n, period, cloth, ranges, total);
+  assert.equal(last.found, true);
+  assert.equal(last.position, cloth - (period - 1n));
+  assert.equal(last.remaining, period - 1n);
+  // total + 1 越界
+  assert.equal(locateAvailablePosition(0n, period, cloth, ranges, total + 1n).found, false);
 });
 
 console.log(`\n全部 ${passed} 项测试通过 ✔\n`);

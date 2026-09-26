@@ -18,7 +18,7 @@ import {
   updateScheme,
   deleteScheme,
 } from './lib/store.js';
-import { solveBody } from './lib/solver.js';
+import { solveBody, locateBody } from './lib/solver.js';
 import { validateScheme } from './lib/validation.js';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
@@ -52,6 +52,13 @@ app.get('/api/schemes/:id', (req, res) => {
 /** 试算（不保存）：页面每次修改后即时查看结果 */
 app.post('/api/solve', (req, res) => {
   const out = solveBody(req.body);
+  if (!out.ok) return res.status(out.status).json({ error: out.error });
+  res.json(out.result);
+});
+
+/** 按序号定位可用对花点（只读查询）：与试算共用求解与禁印区间规则 */
+app.post('/api/solve/locate', (req, res) => {
+  const out = locateBody(req.body);
   if (!out.ok) return res.status(out.status).json({ error: out.error });
   res.json(out.result);
 });

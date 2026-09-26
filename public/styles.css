@@ -186,6 +186,20 @@ code { background: #eef2f6; padding: 0.05rem 0.35rem; border-radius: 3px; font-s
 .positions-table td { font-family: Consolas, Menlo, monospace; font-size: 0.86rem; }
 .positions-table tr td:first-child { text-align: center; font-family: inherit; }
 
+/* ---------- 按序号定位 ---------- */
+.locate-row { margin-top: 0.5rem; margin-bottom: 0; }
+.locate-row .btn { flex-shrink: 0; }
+.locate-result {
+  background: var(--ok-bg);
+  border: 1px solid #bfe3cd;
+  border-radius: 6px;
+  padding: 0.6rem 0.85rem;
+  font-size: 0.9rem;
+  margin: 0.7rem 0 0;
+  word-break: break-all;
+}
+.locate-error { color: var(--danger); }
+
 .suggestions-table { margin-top: 0.5rem; }
 .suggestions-table th, .suggestions-table td {
   border: 1px solid var(--border);

@@ -173,6 +173,20 @@
             </table>
           </div>
           <p id="positions-note" class="hint"></p>
+
+          <h3>按序号定位可用对花点</h3>
+          <p class="hint">
+            输入从 1 开始的十进制序号，定位布长内、扣除禁印区间后的第 N 个可用对花点及其距布尾余量；
+            定位为只读查询，不改变方案数据与上方结果。
+          </p>
+          <div class="form-row locate-row">
+            <label for="locate-index">可用点序号<br /><small>（1 ～ <span id="locate-max">–</span>）</small></label>
+            <input id="locate-index" type="text" inputmode="numeric" placeholder="从 1 开始的十进制序号" />
+            <button id="btn-locate" type="button" class="btn btn-primary">定位</button>
+          </div>
+          <p id="locate-empty-note" class="hint" hidden>避让禁印区间后没有可用对花点，无法按序号定位。</p>
+          <div id="locate-result" class="locate-result" hidden></div>
+          <p id="locate-error" class="hint locate-error" hidden></p>
         </div>
       </section>
     </section>
